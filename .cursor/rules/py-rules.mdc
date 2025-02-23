@@ -1,0 +1,13 @@
+---
+description: 
+globs: 
+---
+
+# Your rule content
+
+- You can @ files here
+- You can use markdown but dont have to
+- the reading strategies are in 
+- look up the requirements of [README.md](mdc:MT-AI/README.md) and the trading strategy in [complete-forex-requirements.md](mdc:complete-forex-requirements.md) before implementing a feature, test or function/architecture
+- This application will integrate with a local Ollama deepseek-r1 for all AI capabilities
+- this application will use Machine learning
