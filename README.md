@@ -79,9 +79,9 @@ pip install -r requirements.txt
 Create a `.env` file in the project root:
 
 ```env
-MT5_LOGIN=your_login
+MT5_LOGIN=your_account_number
 MT5_PASSWORD=your_password
-MT5_SERVER=your_broker_server
+MT5_SERVER=Exness-MT5Real2  # or Exness-MT5Trial2 for demo
 INITIAL_DEPOSIT=100000
 RISK_PER_TRADE=0.02
 MAX_DAILY_LOSS=0.05
@@ -240,4 +240,4 @@ This project is licensed under the MIT License - see LICENSE file for details.
 
 ## Disclaimer
 
-Trading forex carries significant risk. This software is for educational purposes only. Always test thoroughly before live trading.
+Trading forex carries significant risk. This software is for internal use only. Always test thoroughly before live trading.login 

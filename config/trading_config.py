@@ -15,9 +15,18 @@ for directory in [DATA_DIR, MODELS_DIR, RESULTS_DIR, LOGS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
 # Trading parameters
-SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY"]
-TIMEFRAMES = ["H1", "H4", "D1"]
+CRYPTO_SYMBOLS = ["BTC/USDT", "ETH/USDT", "BNB/USDT"]  # Crypto trading pairs
+FOREX_SYMBOLS = ["EURUSD=X", "GBPUSD=X", "USDJPY=X"]   # Forex symbols
+TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"]           # Available timeframes
 STRATEGIES = ["momentum", "sr_reversal", "vwap"]
+
+# Exchange settings
+EXCHANGE_SETTINGS = {
+    'name': 'binance',
+    'test_mode': True,  # Use testnet for development
+    'api_key': os.getenv('EXCHANGE_API_KEY', ''),
+    'secret_key': os.getenv('EXCHANGE_SECRET_KEY', ''),
+}
 
 # Strategy configurations
 MOMENTUM_CONFIG = {
@@ -61,12 +70,20 @@ RISK_SETTINGS = {
 
 # Market condition parameters
 MARKET_CONDITIONS = {
-    'min_atr_pips': 12,
-    'max_atr_pips': 40,
-    'max_spread': 3.5,            # Maximum spread in pips
-    'opening_range_delay': 15,    # Minutes to wait after session open
+    'min_volatility': 0.002,      # Minimum price volatility (0.2%)
+    'max_volatility': 0.02,       # Maximum price volatility (2%)
+    'min_volume': 1000000,        # Minimum 24h volume in quote currency
+    'max_spread': 0.002,          # Maximum spread (0.2%)
+    'min_liquidity': 500000,      # Minimum order book liquidity
     'news_buffer': 30,            # Minutes before/after news events
-    'session_overlap_required': True
+}
+
+# Data collection settings
+DATA_SETTINGS = {
+    'historical_days': 30,        # Days of historical data to maintain
+    'update_interval': 60,        # Seconds between data updates
+    'max_retries': 3,            # Maximum API retry attempts
+    'timeout': 30,               # API timeout in seconds
 }
 
 # ML model parameters

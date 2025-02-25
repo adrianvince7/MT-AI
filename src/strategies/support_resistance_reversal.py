@@ -1,15 +1,14 @@
 from .base_strategy import BaseStrategy
-import MetaTrader5 as mt5
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple
 from datetime import datetime, timedelta
 
 class SupportResistanceStrategy(BaseStrategy):
-    def __init__(self, symbol: str, timeframe: mt5.TIMEFRAME = mt5.TIMEFRAME_M5):
-        super().__init__(symbol, timeframe)
+    def __init__(self, symbol: str, timeframe: str = '5m', exchange: str = 'binance'):
+        super().__init__(symbol, timeframe, exchange)
         self.initial_position = 0.4  # 40% initial position
-        self.scale_in_levels = [(0.3, 12)]  # (size%, pips)
+        self.scale_in_levels = [(0.3, 12)]  # (size%, points)
         self.max_hold_time = 30  # minutes
         
     def calculate_support_resistance(self, df: pd.DataFrame, window: int = 20) -> Tuple[float, float]:
@@ -103,17 +102,19 @@ class SupportResistanceStrategy(BaseStrategy):
             current_k > 80 and current_k < current_d  # Overbought and crossing down
         )
         
+        point_value = self.get_point_value()
+        
         if bullish_conditions:
             signal['type'] = 'BUY'
-            signal['stop_loss'] = support - (10 * mt5.symbol_info(self.symbol).point)
+            signal['stop_loss'] = support - (10 * point_value)
             signal['targets'] = [
                 resistance,
-                resistance + (20 * mt5.symbol_info(self.symbol).point)
+                resistance + (20 * point_value)
             ]
             
             # Calculate position sizes
             base_size = self.calculate_position_size(
-                (current_price - signal['stop_loss']) / mt5.symbol_info(self.symbol).point
+                (current_price - signal['stop_loss']) / point_value
             )
             signal['position_sizes'] = [
                 base_size * self.initial_position,
@@ -122,15 +123,15 @@ class SupportResistanceStrategy(BaseStrategy):
             
         elif bearish_conditions:
             signal['type'] = 'SELL'
-            signal['stop_loss'] = resistance + (10 * mt5.symbol_info(self.symbol).point)
+            signal['stop_loss'] = resistance + (10 * point_value)
             signal['targets'] = [
                 support,
-                support - (20 * mt5.symbol_info(self.symbol).point)
+                support - (20 * point_value)
             ]
             
             # Calculate position sizes
             base_size = self.calculate_position_size(
-                (signal['stop_loss'] - current_price) / mt5.symbol_info(self.symbol).point
+                (signal['stop_loss'] - current_price) / point_value
             )
             signal['position_sizes'] = [
                 base_size * self.initial_position,
@@ -144,59 +145,84 @@ class SupportResistanceStrategy(BaseStrategy):
         if not signal['type'] or not self.check_risk_limits():
             return False
             
-        # Check if we're within trading hours (avoid trading during major news)
-        current_time = datetime.now()
-        if current_time.hour < 2 or current_time.hour > 21:  # Example trading hours
+        try:
+            # Check if we're within trading hours
+            current_time = datetime.now()
+            if current_time.hour < 2 or current_time.hour > 21:  # Example trading hours
+                return False
+                
+            # Prepare the order parameters
+            order_type = 'market'
+            side = signal['type'].lower()
+            amount = signal['position_sizes'][0]
+            
+            # Execute the trade
+            if self.symbol.endswith('=X'):  # Forex
+                # Implementation for forex broker API would go here
+                # This is a placeholder as it depends on the specific broker's API
+                return False
+            else:  # Crypto
+                # Initial entry
+                order = self.exchange_api.create_order(
+                    symbol=self.symbol,
+                    type=order_type,
+                    side=side,
+                    amount=amount,
+                    params={
+                        'stopLoss': {
+                            'type': 'stop',
+                            'price': signal['stop_loss']
+                        },
+                        'takeProfit': {
+                            'type': 'limit',
+                            'price': signal['targets'][0]
+                        }
+                    }
+                )
+                
+                if not order:
+                    return False
+                    
+                # Place breakout entry order
+                breakout_price = (
+                    signal['entry_price'] + (self.scale_in_levels[0][1] * self.get_point_value())
+                    if signal['type'] == 'BUY'
+                    else signal['entry_price'] - (self.scale_in_levels[0][1] * self.get_point_value())
+                )
+                
+                expiry_time = datetime.now() + timedelta(minutes=self.max_hold_time)
+                
+                self.exchange_api.create_order(
+                    symbol=self.symbol,
+                    type='limit',
+                    side=side,
+                    amount=signal['position_sizes'][1],
+                    price=breakout_price,
+                    params={
+                        'stopLoss': {
+                            'type': 'stop',
+                            'price': signal['stop_loss']
+                        },
+                        'takeProfit': {
+                            'type': 'limit',
+                            'price': signal['targets'][1]
+                        },
+                        'timeInForce': 'GTD',
+                        'expireTime': int(expiry_time.timestamp() * 1000)
+                    }
+                )
+                
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Error executing trade: {str(e)}")
             return False
             
-        # Prepare the trade request
-        request = {
-            "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": self.symbol,
-            "volume": signal['position_sizes'][0],  # Initial position size
-            "type": mt5.ORDER_TYPE_BUY if signal['type'] == 'BUY' else mt5.ORDER_TYPE_SELL,
-            "price": signal['entry_price'],
-            "sl": signal['stop_loss'],
-            "tp": signal['targets'][0],  # First target
-            "deviation": 20,
-            "magic": 234001,
-            "comment": "S/R Reversal",
-            "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        }
-        
-        # Send the trade
-        result = mt5.order_send(request)
-        if result.retcode != mt5.TRADE_RETCODE_DONE:
-            print(f"Order failed, retcode={result.retcode}")
-            return False
-            
-        # Place breakout entry order
-        breakout_price = (signal['entry_price'] + 
-                         (self.scale_in_levels[0][1] * mt5.symbol_info(self.symbol).point)
-                         if signal['type'] == 'BUY' else
-                         signal['entry_price'] - 
-                         (self.scale_in_levels[0][1] * mt5.symbol_info(self.symbol).point))
-        
-        breakout_request = {
-            "action": mt5.TRADE_ACTION_PENDING,
-            "symbol": self.symbol,
-            "volume": signal['position_sizes'][1],
-            "type": mt5.ORDER_TYPE_BUY_LIMIT if signal['type'] == 'BUY' 
-                    else mt5.ORDER_TYPE_SELL_LIMIT,
-            "price": breakout_price,
-            "sl": signal['stop_loss'],
-            "tp": signal['targets'][1],
-            "deviation": 20,
-            "magic": 234002,
-            "comment": "S/R Reversal Breakout",
-            "type_time": mt5.ORDER_TIME_SPECIFIED,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-            "expiration": datetime.now() + timedelta(minutes=self.max_hold_time)
-        }
-        
-        breakout_result = mt5.order_send(breakout_request)
-        if breakout_result.retcode != mt5.TRADE_RETCODE_DONE:
-            print(f"Breakout order failed, retcode={breakout_result.retcode}")
-            
-        return True 
+    def get_point_value(self) -> float:
+        """Get the point value for the symbol."""
+        if self.symbol.endswith('=X'):  # Forex
+            return 0.0001 if not self.symbol.endswith('JPY=X') else 0.01
+        else:  # Crypto
+            # Use a percentage of current price as point value
+            current_price = self.get_market_data(lookback=1)['close'].iloc[-1]
+            return current_price * 0.0001  # 0.01% of price 

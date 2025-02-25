@@ -5,14 +5,16 @@ import os
 import logging
 from pathlib import Path
 from datetime import datetime
-import MetaTrader5 as mt5
+import ccxt
 from dotenv import load_dotenv
+import time
 
 from strategies.strategy_manager import StrategyManager
 from market_analysis.market_conditions import MarketConditionAnalyzer
 from risk_management.performance_metrics import PerformanceManager
 from config.trading_config import (
-    SYMBOLS, SYSTEM_SETTINGS, LOGS_DIR
+    CRYPTO_SYMBOLS, FOREX_SYMBOLS, EXCHANGE_SETTINGS,
+    TIMEFRAMES, SYSTEM_SETTINGS, LOGS_DIR
 )
 
 # Setup logging
@@ -27,69 +29,81 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def initialize_mt5():
-    """Initialize MetaTrader 5 connection."""
-    if not mt5.initialize():
-        logger.error("MT5 initialization failed")
-        return False
-        
-    # Load environment variables
-    load_dotenv()
-    
-    # Login to MT5
-    authorized = mt5.login(
-        login=int(os.getenv('MT5_LOGIN')),
-        password=os.getenv('MT5_PASSWORD'),
-        server=os.getenv('MT5_SERVER')
-    )
-    
-    if not authorized:
-        logger.error(f"MT5 login failed: {mt5.last_error()}")
-        return False
-        
-    logger.info("MT5 initialized successfully")
-    return True
-
-def main():
-    """Main execution function."""
+def initialize_exchange():
+    """Initialize exchange connection."""
     try:
-        # Initialize MT5
-        if not initialize_mt5():
-            sys.exit(1)
+        # Load environment variables
+        load_dotenv()
+        
+        if EXCHANGE_SETTINGS['test_mode']:
+            exchange_class = getattr(ccxt, f"{EXCHANGE_SETTINGS['name']}{'Test' if EXCHANGE_SETTINGS['test_mode'] else ''}")
+        else:
+            exchange_class = getattr(ccxt, EXCHANGE_SETTINGS['name'])
             
-        # Initialize components
-        strategy_manager = StrategyManager(SYMBOLS)
+        exchange = exchange_class({
+            'apiKey': EXCHANGE_SETTINGS['api_key'],
+            'secret': EXCHANGE_SETTINGS['secret_key'],
+            'enableRateLimit': True
+        })
+        
+        if EXCHANGE_SETTINGS['test_mode']:
+            exchange.set_sandbox_mode(True)
+            
+        # Test connection
+        exchange.fetch_balance()
+        logger.info(f"Successfully connected to {EXCHANGE_SETTINGS['name']}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize exchange: {str(e)}")
+        return False
+        
+def main():
+    """Main function to run the trading system."""
+    if not initialize_exchange():
+        sys.exit(1)
+        
+    try:
+        # Initialize strategy manager with both crypto and forex symbols
+        strategy_manager = StrategyManager(
+            symbols=CRYPTO_SYMBOLS + FOREX_SYMBOLS,
+            exchange=EXCHANGE_SETTINGS['name'],
+            timeframe=TIMEFRAMES[0]  # Use first timeframe as default
+        )
+        
+        # Initialize market analyzer
         market_analyzer = MarketConditionAnalyzer()
+        
+        # Initialize performance manager
         performance_manager = PerformanceManager()
         
-        logger.info("Starting trading system...")
+        # Start the strategy manager
+        strategy_manager.start()
         
-        while True:
-            try:
-                # Check if we should continue trading
-                can_trade, reason = performance_manager.should_continue_trading()
-                if not can_trade:
-                    logger.warning(f"Trading paused: {reason}")
-                    continue
-                    
-                # Execute trading strategies
-                strategy_manager.execute_strategies()
+        # Keep the main thread running
+        try:
+            while True:
+                # Monitor system performance
+                performance = strategy_manager.get_strategy_performance()
+                performance_manager.update_metrics(performance)
                 
-                # Monitor positions
-                strategy_manager.monitor_positions()
+                # Log performance metrics
+                logger.info("Current Performance Metrics:")
+                for symbol, metrics in performance.items():
+                    for strategy, stats in metrics.items():
+                        logger.info(f"{symbol} - {strategy}: Win Rate: {stats['win_rate']:.2%}, "
+                                  f"Total Profit: {stats['total_profit']:.2f}")
+                                  
+                # Sleep for a while before next update
+                time.sleep(300)  # 5 minutes
                 
-                # Sleep for update interval
-                mt5.sleep(SYSTEM_SETTINGS['update_interval'] * 1000)  # Convert to milliseconds
-                
-            except Exception as e:
-                logger.error(f"Error in main loop: {str(e)}")
-                mt5.sleep(SYSTEM_SETTINGS['retry_delay'] * 1000)
-                
-    except KeyboardInterrupt:
-        logger.info("Shutting down trading system...")
-    finally:
-        mt5.shutdown()
-        logger.info("Trading system stopped")
-
+        except KeyboardInterrupt:
+            logger.info("Shutting down trading system...")
+            strategy_manager.stop()
+            
+    except Exception as e:
+        logger.error(f"Error in main function: {str(e)}")
+        sys.exit(1)
+        
 if __name__ == "__main__":
     main() 

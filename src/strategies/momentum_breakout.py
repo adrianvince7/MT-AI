@@ -1,16 +1,15 @@
 from .base_strategy import BaseStrategy
-import MetaTrader5 as mt5
 import numpy as np
 from typing import Dict, Optional
 import pandas as pd
 
 class MomentumBreakoutStrategy(BaseStrategy):
-    def __init__(self, symbol: str, timeframe: mt5.TIMEFRAME = mt5.TIMEFRAME_M5):
-        super().__init__(symbol, timeframe)
+    def __init__(self, symbol: str, timeframe: str = '5m', exchange: str = 'binance'):
+        super().__init__(symbol, timeframe, exchange)
         self.initial_position = 0.3  # 30% initial position
-        self.scale_in_levels = [(0.2, 5), (0.5, 8)]  # (size%, pips)
-        self.profit_targets = [15, 30]  # pips
-        self.stop_loss = 10  # pips
+        self.scale_in_levels = [(0.2, 5), (0.5, 8)]  # (size%, points)
+        self.profit_targets = [15, 30]  # points
+        self.stop_loss = 10  # points
         
     def generate_signals(self) -> Dict:
         """Generate trading signals based on momentum breakout conditions."""
@@ -42,9 +41,9 @@ class MomentumBreakoutStrategy(BaseStrategy):
         
         if ema_aligned_bullish and rsi_bullish and volume_confirmed:
             signal['type'] = 'BUY'
-            signal['stop_loss'] = current_price - (self.stop_loss * mt5.symbol_info(self.symbol).point)
+            signal['stop_loss'] = current_price - (self.stop_loss * self.get_point_value())
             signal['targets'] = [
-                current_price + (target * mt5.symbol_info(self.symbol).point)
+                current_price + (target * self.get_point_value())
                 for target in self.profit_targets
             ]
             # Calculate position sizes for initial entry and scaling
@@ -57,9 +56,9 @@ class MomentumBreakoutStrategy(BaseStrategy):
             
         elif ema_aligned_bearish and rsi_bearish and volume_confirmed:
             signal['type'] = 'SELL'
-            signal['stop_loss'] = current_price + (self.stop_loss * mt5.symbol_info(self.symbol).point)
+            signal['stop_loss'] = current_price + (self.stop_loss * self.get_point_value())
             signal['targets'] = [
-                current_price - (target * mt5.symbol_info(self.symbol).point)
+                current_price - (target * self.get_point_value())
                 for target in self.profit_targets
             ]
             # Calculate position sizes for initial entry and scaling
@@ -77,53 +76,75 @@ class MomentumBreakoutStrategy(BaseStrategy):
         if not signal['type'] or not self.check_risk_limits():
             return False
             
-        # Prepare the trade request
-        request = {
-            "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": self.symbol,
-            "volume": signal['position_sizes'][0],  # Initial position size
-            "type": mt5.ORDER_TYPE_BUY if signal['type'] == 'BUY' else mt5.ORDER_TYPE_SELL,
-            "price": signal['entry_price'],
-            "sl": signal['stop_loss'],
-            "tp": signal['targets'][0],  # First target
-            "deviation": 20,
-            "magic": 234000,
-            "comment": "Momentum Breakout",
-            "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        }
-        
-        # Send the trade
-        result = mt5.order_send(request)
-        if result.retcode != mt5.TRADE_RETCODE_DONE:
-            print(f"Order failed, retcode={result.retcode}")
+        try:
+            # Prepare the order parameters
+            order_type = 'market'
+            side = signal['type'].lower()
+            amount = signal['position_sizes'][0]
+            
+            # Execute the initial trade
+            if self.symbol.endswith('=X'):  # Forex
+                # Implementation for forex broker API would go here
+                # This is a placeholder as it depends on the specific broker's API
+                return False
+            else:  # Crypto
+                order = self.exchange_api.create_order(
+                    symbol=self.symbol,
+                    type=order_type,
+                    side=side,
+                    amount=amount,
+                    params={
+                        'stopLoss': {
+                            'type': 'stop',
+                            'price': signal['stop_loss']
+                        },
+                        'takeProfit': {
+                            'type': 'limit',
+                            'price': signal['targets'][0]
+                        }
+                    }
+                )
+                
+                if not order:
+                    return False
+                    
+                # Place scaled entry orders
+                for i, (size_pct, points) in enumerate(self.scale_in_levels, 1):
+                    scale_price = (
+                        signal['entry_price'] + (points * self.get_point_value())
+                        if signal['type'] == 'BUY'
+                        else signal['entry_price'] - (points * self.get_point_value())
+                    )
+                    
+                    self.exchange_api.create_order(
+                        symbol=self.symbol,
+                        type='limit',
+                        side=side,
+                        amount=signal['position_sizes'][i],
+                        price=scale_price,
+                        params={
+                            'stopLoss': {
+                                'type': 'stop',
+                                'price': signal['stop_loss']
+                            },
+                            'takeProfit': {
+                                'type': 'limit',
+                                'price': signal['targets'][min(i + 1, len(signal['targets']) - 1)]
+                            }
+                        }
+                    )
+                    
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Error executing trade: {str(e)}")
             return False
             
-        # Place scaled entry orders
-        for i, (size_pct, pips) in enumerate(self.scale_in_levels, 1):
-            scale_price = (signal['entry_price'] + 
-                         (pips * mt5.symbol_info(self.symbol).point) if signal['type'] == 'BUY'
-                         else signal['entry_price'] - 
-                         (pips * mt5.symbol_info(self.symbol).point))
-            
-            scale_request = {
-                "action": mt5.TRADE_ACTION_PENDING,
-                "symbol": self.symbol,
-                "volume": signal['position_sizes'][i],
-                "type": mt5.ORDER_TYPE_BUY_LIMIT if signal['type'] == 'BUY' 
-                        else mt5.ORDER_TYPE_SELL_LIMIT,
-                "price": scale_price,
-                "sl": signal['stop_loss'],
-                "tp": signal['targets'][1],  # Second target for scaled positions
-                "deviation": 20,
-                "magic": 234000 + i,
-                "comment": f"Momentum Breakout Scale {i}",
-                "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
-            }
-            
-            scale_result = mt5.order_send(scale_request)
-            if scale_result.retcode != mt5.TRADE_RETCODE_DONE:
-                print(f"Scale order {i} failed, retcode={scale_result.retcode}")
-                
-        return True 
+    def get_point_value(self) -> float:
+        """Get the point value for the symbol."""
+        if self.symbol.endswith('=X'):  # Forex
+            return 0.0001 if not self.symbol.endswith('JPY=X') else 0.01
+        else:  # Crypto
+            # Use a percentage of current price as point value
+            current_price = self.get_market_data(lookback=1)['close'].iloc[-1]
+            return current_price * 0.0001  # 0.01% of price 

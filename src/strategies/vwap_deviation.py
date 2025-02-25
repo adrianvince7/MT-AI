@@ -1,13 +1,12 @@
 from .base_strategy import BaseStrategy
-import MetaTrader5 as mt5
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple
 from datetime import datetime, timedelta
 
 class VWAPDeviationStrategy(BaseStrategy):
-    def __init__(self, symbol: str, timeframe: mt5.TIMEFRAME = mt5.TIMEFRAME_M5):
-        super().__init__(symbol, timeframe)
+    def __init__(self, symbol: str, timeframe: str = '5m', exchange: str = 'binance'):
+        super().__init__(symbol, timeframe, exchange)
         self.std_dev_threshold = 1.5  # Standard deviation threshold for entry
         self.position_scale = 0.25  # 25% position scaling
         self.max_hold_time = 120  # 2-hour maximum hold time
@@ -16,15 +15,15 @@ class VWAPDeviationStrategy(BaseStrategy):
     def calculate_vwap(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate VWAP and standard deviation bands."""
         # Calculate VWAP
-        df['vwap'] = (df['close'] * df['tick_volume']).cumsum() / df['tick_volume'].cumsum()
+        df['vwap'] = (df['close'] * df['volume']).cumsum() / df['volume'].cumsum()
         
         # Calculate standard deviation
-        df['price_vol'] = df['close'] * df['tick_volume']
-        df['cum_vol'] = df['tick_volume'].cumsum()
+        df['price_vol'] = df['close'] * df['volume']
+        df['cum_vol'] = df['volume'].cumsum()
         
         # Standard deviation calculation
         df['squared_diff'] = (df['close'] - df['vwap']) ** 2
-        df['weighted_squared_diff'] = df['squared_diff'] * df['tick_volume']
+        df['weighted_squared_diff'] = df['squared_diff'] * df['volume']
         df['vwap_std'] = np.sqrt(df['weighted_squared_diff'].cumsum() / df['cum_vol'])
         
         # Calculate standard deviation bands
@@ -98,7 +97,7 @@ class VWAPDeviationStrategy(BaseStrategy):
             
             # Calculate position sizes for scaling
             base_size = self.calculate_position_size(
-                (current_price - signal['stop_loss']) / mt5.symbol_info(self.symbol).point
+                (current_price - signal['stop_loss']) / self.get_point_value()
             )
             signal['position_sizes'] = [base_size * self.position_scale] * 4  # 4 entries of 25% each
             
@@ -113,7 +112,7 @@ class VWAPDeviationStrategy(BaseStrategy):
             
             # Calculate position sizes for scaling
             base_size = self.calculate_position_size(
-                (signal['stop_loss'] - current_price) / mt5.symbol_info(self.symbol).point
+                (signal['stop_loss'] - current_price) / self.get_point_value()
             )
             signal['position_sizes'] = [base_size * self.position_scale] * 4
             
@@ -124,54 +123,77 @@ class VWAPDeviationStrategy(BaseStrategy):
         if not signal['type'] or not self.check_risk_limits():
             return False
             
-        # Initial entry
-        request = {
-            "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": self.symbol,
-            "volume": signal['position_sizes'][0],
-            "type": mt5.ORDER_TYPE_BUY if signal['type'] == 'BUY' else mt5.ORDER_TYPE_SELL,
-            "price": signal['entry_price'],
-            "sl": signal['stop_loss'],
-            "tp": signal['targets'][0],
-            "deviation": 20,
-            "magic": 234003,
-            "comment": "VWAP Deviation Initial",
-            "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        }
-        
-        result = mt5.order_send(request)
-        if result.retcode != mt5.TRADE_RETCODE_DONE:
-            print(f"Initial order failed, retcode={result.retcode}")
+        try:
+            # Prepare order parameters
+            order_type = 'market'
+            side = signal['type'].lower()
+            amount = signal['position_sizes'][0]
+            
+            if self.symbol.endswith('=X'):  # Forex
+                # Implementation for forex broker API would go here
+                # This is a placeholder as it depends on the specific broker's API
+                return False
+            else:  # Crypto
+                # Initial entry
+                order = self.exchange_api.create_order(
+                    symbol=self.symbol,
+                    type=order_type,
+                    side=side,
+                    amount=amount,
+                    params={
+                        'stopLoss': {
+                            'type': 'stop',
+                            'price': signal['stop_loss']
+                        },
+                        'takeProfit': {
+                            'type': 'limit',
+                            'price': signal['targets'][0]
+                        }
+                    }
+                )
+                
+                if not order:
+                    return False
+                    
+                # Place scaled entry orders
+                for i in range(1, 4):
+                    scale_price = (
+                        signal['entry_price'] * (1 + (0.001 * i))  # 0.1% price increments for scaling
+                        if signal['type'] == 'BUY'
+                        else signal['entry_price'] * (1 - (0.001 * i))
+                    )
+                    
+                    self.exchange_api.create_order(
+                        symbol=self.symbol,
+                        type='limit',
+                        side=side,
+                        amount=signal['position_sizes'][i],
+                        price=scale_price,
+                        params={
+                            'stopLoss': {
+                                'type': 'stop',
+                                'price': signal['stop_loss']
+                            },
+                            'takeProfit': {
+                                'type': 'limit',
+                                'price': signal['targets'][min(i + 1, len(signal['targets']) - 1)]
+                            },
+                            'timeInForce': 'GTD',
+                            'expireTime': int((datetime.now() + timedelta(minutes=self.max_hold_time)).timestamp() * 1000)
+                        }
+                    )
+                    
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Error executing trade: {str(e)}")
             return False
             
-        # Place scaled entry orders
-        for i in range(1, 4):
-            scale_price = (
-                signal['entry_price'] * (1 + (0.001 * i))  # 0.1% price increments for scaling
-                if signal['type'] == 'BUY'
-                else signal['entry_price'] * (1 - (0.001 * i))
-            )
-            
-            scale_request = {
-                "action": mt5.TRADE_ACTION_PENDING,
-                "symbol": self.symbol,
-                "volume": signal['position_sizes'][i],
-                "type": mt5.ORDER_TYPE_BUY_LIMIT if signal['type'] == 'BUY'
-                        else mt5.ORDER_TYPE_SELL_LIMIT,
-                "price": scale_price,
-                "sl": signal['stop_loss'],
-                "tp": signal['targets'][min(i + 1, len(signal['targets']) - 1)],
-                "deviation": 20,
-                "magic": 234003 + i,
-                "comment": f"VWAP Deviation Scale {i}",
-                "type_time": mt5.ORDER_TIME_SPECIFIED,
-                "type_filling": mt5.ORDER_FILLING_IOC,
-                "expiration": datetime.now() + timedelta(minutes=self.max_hold_time)
-            }
-            
-            scale_result = mt5.order_send(scale_request)
-            if scale_result.retcode != mt5.TRADE_RETCODE_DONE:
-                print(f"Scale order {i} failed, retcode={scale_result.retcode}")
-                
-        return True 
+    def get_point_value(self) -> float:
+        """Get the point value for the symbol."""
+        if self.symbol.endswith('=X'):  # Forex
+            return 0.0001 if not self.symbol.endswith('JPY=X') else 0.01
+        else:  # Crypto
+            # Use a percentage of current price as point value
+            current_price = self.get_market_data(lookback=1)['close'].iloc[-1]
+            return current_price * 0.0001  # 0.01% of price 
