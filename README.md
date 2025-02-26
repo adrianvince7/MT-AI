@@ -1,60 +1,26 @@
-# MT-AI: Advanced Forex Trading System
+# MT-AI: AI-Enhanced Forex Trading System
 
-An AI-enhanced forex trading system integrating with MetaTrader 5, featuring machine learning-driven decision making, sophisticated risk management, and comprehensive backtesting capabilities.
+A sophisticated forex trading system that leverages machine learning for market analysis and decision making.
 
 ## Features
 
-- **Advanced Trading Strategies**
-  - Momentum Breakout
-  - Support/Resistance Reversal
-  - VWAP Deviation
-  - ML-Enhanced Signal Generation
-
-- **Risk Management**
-  - Dynamic Position Sizing
-  - Quick Profit Capture
-  - Multi-level Risk Controls
-  - Performance Analytics
-
-- **Machine Learning Integration**
-  - Real-time Feature Engineering
-  - Multiple Model Architectures (LSTM, CNN-LSTM, Attention)
-  - Walk-Forward Optimization
-  - Ensemble Predictions
-
-- **Market Analysis**
-  - Session-based Trading
-  - Volatility Management
-  - Real-time Market Condition Analysis
-  - Economic Calendar Integration
-
-## System Requirements
-
-- Python 3.8 or later
-- MetaTrader 5 Terminal
-- 8GB RAM minimum (16GB recommended)
-- 50GB free disk space
-- Internet connection for live trading
-
-### Supported Platforms
-- macOS 12.0 (Monterey) or later
-- Windows 10/11 64-bit
+- Machine Learning driven market analysis
+- Multiple trading strategies implementation
+- Backtesting capabilities
+- Real-time trading with MT5 integration
+- Risk management system
+- Market data analysis tools
 
 ## Installation
 
-### 1. MetaTrader 5 Setup
+### Prerequisites
 
-#### Windows
-1. Download and install MetaTrader 5 from your broker's website
-2. Launch MT5 and log in to your trading account
-3. Enable "AutoTrading" and "Allow Automated Trading"
+- Python 3.8 or higher
+- MetaTrader 5 platform installed
+- Valid MT5 account credentials
+- pip (Python package installer)
 
-#### macOS
-1. Install MetaTrader 5 using CrossOver or Parallels
-2. Configure the Windows environment
-3. Follow Windows setup steps above
-
-### 2. Python Environment Setup
+### Install from source
 
 ```bash
 # Clone the repository
@@ -62,182 +28,125 @@ git clone https://github.com/yourusername/MT-AI.git
 cd MT-AI
 
 # Create and activate virtual environment
-## Windows
 python -m venv venv
-venv\Scripts\activate
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
 
-## macOS
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
+# Install required packages
 pip install -r requirements.txt
+
+# Install the package in development mode
+pip install -e .
+
+# Verify MetaTrader5 installation
+python -c "import MetaTrader5 as mt5; print(mt5.__version__)"
 ```
 
-### 3. Environment Configuration
+If you encounter any errors:
+1. Ensure MetaTrader5 package is installed:
+```bash
+pip install MetaTrader5
+```
+2. Make sure all dependencies are installed:
+```bash
+pip install numpy pandas scikit-learn tensorflow python-dotenv pytest
+```
 
-Create a `.env` file in the project root:
+## Usage
 
-```env
-MT5_LOGIN=your_account_number
+### Configuration
+
+1. Copy `.env.example` to `.env`:
+```bash
+cp .env.example .env  # On Windows use: copy .env.example .env
+```
+
+2. Edit `.env` with your MT5 credentials:
+```
+MT5_LOGIN=your_login
 MT5_PASSWORD=your_password
-MT5_SERVER=Exness-MT5Real2  # or Exness-MT5Trial2 for demo
-INITIAL_DEPOSIT=100000
-RISK_PER_TRADE=0.02
-MAX_DAILY_LOSS=0.05
+MT5_SERVER=your_server
+```
+
+### Running the Trading System
+
+1. Ensure MetaTrader 5 terminal is running and you're logged in
+
+2. Start the main trading system:
+```bash
+python -m src.main
+# or use the installed command
+mt-ai
+```
+
+3. Run backtesting:
+```bash
+python -m src.backtesting.run_optimization
+# or use the installed command
+mt-ai-backtest
 ```
 
 ## Project Structure
 
 ```
 MT-AI/
-├── src/
-│   ├── strategies/          # Trading strategies
-│   ├── ml/                  # Machine learning components
-│   ├── risk_management/     # Risk management modules
-│   ├── market_analysis/     # Market analysis tools
-│   ├── backtesting/        # Backtesting engine
-│   └── data/               # Data management
-├── models/                  # Trained ML models
-├── data/                   # Historical data
-│   ├── raw/
-│   └── processed/
-├── results/                # Backtesting results
-├── logs/                   # Trading and system logs
-└── tests/                  # Test suite
+├── src/                    # Source code
+│   ├── main.py            # Main entry point
+│   ├── backtesting/       # Backtesting modules
+│   ├── brokers/           # Broker integration
+│   ├── config/            # Configuration
+│   ├── data/              # Data handling
+│   ├── market_analysis/   # Market analysis tools
+│   ├── ml/                # Machine learning models
+│   ├── risk_management/   # Risk management
+│   └── strategies/        # Trading strategies
+├── tests/                 # Test suite
+├── models/               # Saved ML models
+├── data/                 # Market data
+├── logs/                 # Application logs
+├── results/              # Trading results
+└── config/              # Configuration files
 ```
 
-## Quick Start
+## Development
 
-1. **Configure Trading Parameters**
-
-Edit `config/trading_config.py`:
-```python
-SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY"]
-TIMEFRAMES = ["H1", "H4", "D1"]
-STRATEGIES = ["momentum", "sr_reversal", "vwap"]
-```
-
-2. **Run Backtesting**
+### Running Tests
 
 ```bash
-# Run walk-forward optimization
-python -m src.backtesting.run_optimization
-
-# View results in results/optimization/
+pytest
 ```
 
-3. **Start Live Trading**
+### Adding New Strategies
 
-```bash
-# Start the trading system
-python -m src.main
-
-# Monitor logs in logs/trading.log
-```
-
-## Trading Strategy Configuration
-
-### Momentum Breakout
-```python
-MOMENTUM_CONFIG = {
-    'lookback_period': 20,
-    'volatility_period': 14,
-    'breakout_threshold': 1.5
-}
-```
-
-### Support/Resistance
-```python
-SR_CONFIG = {
-    'sr_period': 50,
-    'zone_threshold': 0.001,
-    'reversal_threshold': 2.0
-}
-```
-
-### VWAP Deviation
-```python
-VWAP_CONFIG = {
-    'vwap_period': 24,
-    'deviation_threshold': 2.0,
-    'volume_factor': 1.5
-}
-```
-
-## Risk Management Settings
-
-Edit `config/risk_config.py`:
-```python
-RISK_SETTINGS = {
-    'max_position_size': 0.02,  # 2% per trade
-    'max_total_exposure': 0.06, # 6% total
-    'daily_loss_limit': 0.05,   # 5% daily max loss
-    'trailing_stop': 5          # 5 pip trailing stop
-}
-```
-
-## Monitoring and Maintenance
-
-### Log Monitoring
-- Trading logs: `logs/trading.log`
-- System logs: `logs/system.log`
-- ML predictions: `logs/predictions.log`
-
-### Performance Analysis
-```bash
-# Generate performance report
-python -m src.analysis.generate_report
-
-# View in results/reports/
-```
-
-### Database Maintenance
-```bash
-# Backup trading database
-python -m src.utils.backup_db
-
-# Clean old logs
-python -m src.utils.clean_logs
-```
+1. Create a new strategy file in `src/strategies/`
+2. Implement the strategy interface
+3. Register the strategy in `src/strategy_manager.py`
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **MT5 Connection Issues**
-   - Check internet connection
-   - Verify MT5 is running and AutoTrading is enabled
-   - Confirm credentials in `.env` file
+1. `ModuleNotFoundError: No module named 'MetaTrader5'`
+   - Run: `pip install MetaTrader5`
+   - Verify installation: `python -c "import MetaTrader5"`
 
-2. **Performance Issues**
-   - Close unnecessary applications
-   - Check system resource usage
-   - Reduce number of monitored symbols
+2. MT5 Connection Issues
+   - Ensure MetaTrader 5 terminal is running
+   - Verify your credentials in `.env`
+   - Check your internet connection
 
-3. **ML Model Errors**
-   - Verify model files in models/ directory
-   - Check feature engineering pipeline
-   - Ensure sufficient historical data
-
-### Error Codes
-
-- `E001`: MT5 connection failed
-- `E002`: Insufficient data
-- `E003`: Model prediction error
-- `E004`: Risk limit exceeded
-
-## Support
-
-For issues and feature requests, please:
-1. Check the troubleshooting guide
-2. Review existing issues
-3. Create a new issue with detailed information
+3. Package Import Errors
+   - Ensure you're in your virtual environment
+   - Run: `pip install -r requirements.txt`
+   - Verify installation: `pip list`
 
 ## License
 
-This project is licensed under the MIT License - see LICENSE file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Disclaimer
+## Contributing
 
-Trading forex carries significant risk. This software is for internal use only. Always test thoroughly before live trading.login 
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request 
