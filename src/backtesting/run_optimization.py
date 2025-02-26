@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Dict
 
 from ..strategies.momentum_breakout import MomentumBreakoutStrategy
-from ..strategies.support_resistance import SupportResistanceStrategy
+from ..strategies.support_resistance_reversal import SupportResistanceStrategy
 from ..strategies.vwap_deviation import VWAPDeviationStrategy
 from .walk_forward import WalkForwardOptimizer
 from ..data.data_loader import DataLoader
@@ -133,10 +133,10 @@ class OptimizationRunner:
 def main():
     """Run the optimization process."""
     # Configuration
-    DATA_PATH = "data/historical"
+    DATA_PATH = "data/raw"
     OUTPUT_DIR = "results/optimization"
-    SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY"]
-    TIMEFRAMES = ["H1", "H4", "D1"]
+    SYMBOLS = ["EURUSDm", "GBPUSDm", "USDJPYm"]
+    TIMEFRAMES = ["M5", "M15", "H1"]
     
     # Run optimization
     runner = OptimizationRunner(

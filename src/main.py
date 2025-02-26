@@ -5,7 +5,7 @@ import os
 import logging
 from pathlib import Path
 from datetime import datetime
-import ccxt
+import MetaTrader5 as mt5
 from dotenv import load_dotenv
 import time
 
@@ -13,7 +13,7 @@ from strategies.strategy_manager import StrategyManager
 from market_analysis.market_conditions import MarketConditionAnalyzer
 from risk_management.performance_metrics import PerformanceManager
 from config.trading_config import (
-    CRYPTO_SYMBOLS, FOREX_SYMBOLS, EXCHANGE_SETTINGS,
+    FOREX_SYMBOLS, MT5_SETTINGS, 
     TIMEFRAMES, SYSTEM_SETTINGS, LOGS_DIR
 )
 
@@ -29,45 +29,45 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def initialize_exchange():
-    """Initialize exchange connection."""
+def initialize_mt5():
+    """Initialize MT5 connection."""
     try:
         # Load environment variables
         load_dotenv()
         
-        if EXCHANGE_SETTINGS['test_mode']:
-            exchange_class = getattr(ccxt, f"{EXCHANGE_SETTINGS['name']}{'Test' if EXCHANGE_SETTINGS['test_mode'] else ''}")
-        else:
-            exchange_class = getattr(ccxt, EXCHANGE_SETTINGS['name'])
+        # Initialize MT5
+        if not mt5.initialize(
+            path=MT5_SETTINGS['terminal_path'],
+            login=MT5_SETTINGS['login'],
+            password=MT5_SETTINGS['password'],
+            server=MT5_SETTINGS['server']
+        ):
+            logger.error(f"MT5 initialization failed: {mt5.last_error()}")
+            return False
             
-        exchange = exchange_class({
-            'apiKey': EXCHANGE_SETTINGS['api_key'],
-            'secret': EXCHANGE_SETTINGS['secret_key'],
-            'enableRateLimit': True
-        })
-        
-        if EXCHANGE_SETTINGS['test_mode']:
-            exchange.set_sandbox_mode(True)
+        # Test connection by getting account info
+        account_info = mt5.account_info()
+        if account_info is None:
+            logger.error("Failed to connect to MT5 account")
+            return False
             
-        # Test connection
-        exchange.fetch_balance()
-        logger.info(f"Successfully connected to {EXCHANGE_SETTINGS['name']}")
+        logger.info(f"Successfully connected to MT5 - Account: {account_info.login}")
         return True
         
     except Exception as e:
-        logger.error(f"Failed to initialize exchange: {str(e)}")
+        logger.error(f"Failed to initialize MT5: {str(e)}")
         return False
         
 def main():
     """Main function to run the trading system."""
-    if not initialize_exchange():
+    if not initialize_mt5():
         sys.exit(1)
         
     try:
-        # Initialize strategy manager with both crypto and forex symbols
+        # Initialize strategy manager with forex symbols
         strategy_manager = StrategyManager(
-            symbols=CRYPTO_SYMBOLS + FOREX_SYMBOLS,
-            exchange=EXCHANGE_SETTINGS['name'],
+            symbols=FOREX_SYMBOLS,
+            broker="MT5",
             timeframe=TIMEFRAMES[0]  # Use first timeframe as default
         )
         
@@ -100,9 +100,11 @@ def main():
         except KeyboardInterrupt:
             logger.info("Shutting down trading system...")
             strategy_manager.stop()
+            mt5.shutdown()
             
     except Exception as e:
         logger.error(f"Error in main function: {str(e)}")
+        mt5.shutdown()
         sys.exit(1)
         
 if __name__ == "__main__":

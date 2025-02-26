@@ -2,10 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import List, Dict, Tuple
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from ta.trend import SMAIndicator, EMAIndicator, ADXIndicator
-from ta.momentum import RSIIndicator, StochasticOscillator
-from ta.volatility import BollingerBands, AverageTrueRange
-from ta.volume import VolumeWeightedAveragePrice
+import talib
 import tensorflow as tf
 
 class FeatureEngineer:
@@ -15,47 +12,41 @@ class FeatureEngineer:
         self.lookback_periods = [5, 10, 20, 50]  # Multiple timeframes for analysis
         
     def calculate_technical_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate technical analysis features."""
+        """Calculate technical analysis features using TA-Lib."""
         # Price action features
         df['returns'] = df['close'].pct_change()
-        df['log_returns'] = np.log1p(df['returns'])
         
+        # Trend indicators
         for period in self.lookback_periods:
-            # Trend indicators
-            sma = SMAIndicator(df['close'], window=period)
-            ema = EMAIndicator(df['close'], window=period)
-            df[f'sma_{period}'] = sma.sma_indicator()
-            df[f'ema_{period}'] = ema.ema_indicator()
-            df[f'distance_to_sma_{period}'] = (df['close'] - df[f'sma_{period}']) / df[f'sma_{period}']
-            
-            # Momentum indicators
-            rsi = RSIIndicator(df['close'], window=period)
-            df[f'rsi_{period}'] = rsi.rsi()
-            
-            stoch = StochasticOscillator(df['high'], df['low'], df['close'], window=period)
-            df[f'stoch_k_{period}'] = stoch.stoch()
-            df[f'stoch_d_{period}'] = stoch.stoch_signal()
-            
-            # Volatility indicators
-            bb = BollingerBands(df['close'], window=period)
-            df[f'bb_upper_{period}'] = bb.bollinger_hband()
-            df[f'bb_lower_{period}'] = bb.bollinger_lband()
-            df[f'bb_width_{period}'] = (df[f'bb_upper_{period}'] - df[f'bb_lower_{period}']) / df['close']
-            
-            atr = AverageTrueRange(df['high'], df['low'], df['close'], window=period)
-            df[f'atr_{period}'] = atr.average_true_range()
-            
-            # Volume indicators
-            vwap = VolumeWeightedAveragePrice(df['high'], df['low'], df['close'], 
-                                             df['volume'], window=period)
-            df[f'vwap_{period}'] = vwap.volume_weighted_average_price()
-            df[f'volume_momentum_{period}'] = df['volume'].rolling(period).mean().pct_change()
-            
-        # Trend strength
-        adx = ADXIndicator(df['high'], df['low'], df['close'])
-        df['adx'] = adx.adx()
-        df['adx_pos'] = adx.adx_pos()
-        df['adx_neg'] = adx.adx_neg()
+            df[f'sma_{period}'] = talib.SMA(df['close'], timeperiod=period)
+            df[f'ema_{period}'] = talib.EMA(df['close'], timeperiod=period)
+        
+        # ADX
+        df['adx'] = talib.ADX(df['high'], df['low'], df['close'], timeperiod=14)
+        
+        # Momentum indicators
+        df['rsi'] = talib.RSI(df['close'], timeperiod=14)
+        
+        # Stochastic
+        df['slowk'], df['slowd'] = talib.STOCH(df['high'], df['low'], df['close'],
+                                              fastk_period=5, slowk_period=3, slowk_matype=0,
+                                              slowd_period=3, slowd_matype=0)
+        
+        # Volatility indicators
+        df['atr'] = talib.ATR(df['high'], df['low'], df['close'], timeperiod=14)
+        
+        # Bollinger Bands
+        df['bb_upper'], df['bb_middle'], df['bb_lower'] = talib.BBANDS(df['close'], 
+                                                                       timeperiod=20,
+                                                                       nbdevup=2,
+                                                                       nbdevdn=2,
+                                                                       matype=0)
+        
+        # Volume indicators
+        df['obv'] = talib.OBV(df['close'], df['volume'])
+        
+        # Remove NaN values
+        df = df.dropna()
         
         return df
         
