@@ -2,6 +2,10 @@
 description: 
 globs: 
 ---
+---
+description: 
+globs: 
+---
 
 # Your rule content
 
@@ -11,3 +15,4 @@ globs:
 - look up the requirements of [README.md](mdc:MT-AI/README.md) and the trading strategy in [complete-forex-requirements.md](mdc:complete-forex-requirements.md) before implementing a feature, test or function/architecture
 - This application will integrate with a local Ollama deepseek-r1 for all AI capabilities
 - this application will use Machine learning
+- check if a similar file, by name or understanding file contents, already exists before creating a new one
