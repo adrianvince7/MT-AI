@@ -28,20 +28,18 @@ git clone https://github.com/yourusername/MT-AI.git
 cd MT-AI
 
 # Create and activate virtual environment
-# On Windows PowerShell:
-py -m venv venv --clear
-.\venv\Scripts\activate  # You should see (venv) in your prompt after this
+ -m venv venv --clear --upgrade-deps
+ .\venv\Scripts\activate  # You should see (venv) in your prompt after this
 
-# On Windows Command Prompt:
-py -m venv venv --clear
-venv\Scripts\activate.bat
-
-# On Unix/MacOS:
-python3 -m venv venv
-source venv/bin/activate
+# Ensure you have the latest version of pip installed.
+python -m pip install --upgrade pip
 
 # Install the package with development dependencies
 py -m pip install -e ".[dev,test]"
+
+      # Optional: Generate requirements.txt (if needed for deployment)
+      py -m pip install pip-tools
+      py -m piptools compile pyproject.toml -o requirements.txt
 
 # Verify installation
 py -m pytest  # Should run without errors

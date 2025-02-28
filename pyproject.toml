@@ -47,7 +47,7 @@ mt-ai = "mt_ai.main:main"
 mt-ai-backtest = "mt_ai.backtesting.run_optimization:main"
 
 [tool.setuptools]
-package-dir = {"" = "."}
+package-dir = {"" = "src"}
 packages = ["mt_ai"]
 
 [tool.setuptools.package-data]
